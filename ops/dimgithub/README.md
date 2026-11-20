@@ -11,7 +11,7 @@ The worker holds no credentials and can read only public GitHub.
 - **No bindings.** The default export is `fetch(request)` and nothing else. It never reads `env` or `ctx`, and it has no `scheduled` handler. `wrangler.jsonc` has an empty cron list and no vars, secrets, rate limits, storage or service bindings.
 - **Runtime restrictions.** `global_fetch_strictly_public` keeps global fetch on the public Internet, `disallow_importable_env` disables environment imports, and `disallow_eval_during_startup` disables startup evaluation. No Node.js compatibility or private service bindings are enabled. The host allowlist is enforced by application code, not by a separate platform egress firewall.
 - **One way out.** Every outbound request goes through `createPublicFetch`. It accepts only a URL string that matches one of these exactly:
-  - `https://github.com/<owner>`, `/<owner>/<repo>`, `/<owner>/<repo>/pull/<n>`, `/issues/<n>`, `/discussions/<n>` or `/commit/<sha>`, with no query or fragment.
+  - `https://github.com/<owner>`, `/<owner>/<repo>`, `/<owner>/<repo>/pull/<n>`, `/issues/<n>`, `/discussions/<n>`, `/commit/<sha>`, `/releases`, `/releases/latest` or `/releases/tag/<tag>`, with no query or fragment. Release tags accept plain letters, digits, underscores, dots, pluses, hyphens and slash-separated segments; the existing traversal and encoding restrictions still apply.
   - `https://avatars.githubusercontent.com/u/<digits>`.
   - `https://api.github.com/users/<owner>`, `/repos/<owner>/<repo>`, `/repos/<owner>/<repo>/issues/<n>`, or the `/repositories/<id>` forms GitHub redirects renamed repositories to.
 

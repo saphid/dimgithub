@@ -195,6 +195,45 @@ test('navigations redirect only to the validated GitHub URL', async () => {
   assert.equal(hostile.response.headers.get('location'), 'https://github.com/a/b');
 });
 
+test('release links render real OG metadata and navigate without a metadata fetch', async () => {
+  const title = 'Release Tumblr Vault 1.0.1 · saphid/tumblr-vault';
+  const source = 'https://opengraph.githubassets.com/abc/saphid/tumblr-vault/releases/tag/v1.0.1';
+  for (const path of ['saphid/tumblr-vault/releases/tag/v1.0.1', 'a/b/releases', 'a/b/releases/latest', 'a/b/releases/tag/v2.0.0-rc.1+build', 'a/b/releases/tag/pkg/v1.0.0']) {
+    for (const wrapper of [preview(path), 'https://nord.dimgithub.com/' + path]) {
+      const { response, body, calls, urls } = await run(wrapper, { script: () => page(html({ title, image: source })), headers: { 'user-agent': 'Discordbot/2.0' } });
+      assert.equal(response.status, 200, wrapper);
+      assert.ok(body.includes(`property="og:title" content="${title}"`));
+      assert.ok(body.includes(`property="og:image" content="${source}"`));
+      assert.deepEqual(urls(), ['https://github.com/' + path]);
+      assertFixedInit(calls[0], 'text/html');
+    }
+    const target = 'https://github.com/' + path;
+    const navigate = await run('https://dimgithub.com/' + path + '?theme=nord', { headers: { ...browser, 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' } });
+    assert.equal(navigate.response.status, 302);
+    assert.equal(navigate.response.headers.get('location'), target);
+    assert.equal(navigate.calls.length, 0);
+  }
+  const result = await run('https://dimgithub.com/image?url=saphid/tumblr-vault/releases/tag/v1.0.1', { script: () => page(html({ image: source })) });
+  assert.equal(result.response.status, 302);
+  assert.equal(result.response.headers.get('location'), source);
+});
+
+test('release support still blocks downloads, edits, encoded paths and hostile redirects', async () => {
+  for (const path of ['a/b/releases/download/v1.0.1/file.tgz', 'a/b/releases/new', 'a/b/releases/edit/v1.0.1', 'a/b/releases/tag', 'a/b/releases/tag/v1%2Fsettings', 'a/b/releases/tag/../settings', 'a/b/releases/tag/%2e%2e', 'a/b/releases/tag/v1\\x', 'a/b/releases/tag/v1//x']) {
+    const { response, calls } = await run(preview(path));
+    assert.equal(response.status, 400, path);
+    assert.equal(calls.length, 0, path);
+  }
+  for (const location of ['/login', '/a/b/releases/download/v1/file.zip', 'https://release-assets.githubusercontent.com/file', 'http://169.254.169.254/latest/meta-data/']) {
+    const { response, calls } = await run(preview('a/b/releases/latest'), { script: [redirect(location)] });
+    assert.equal(response.status, 502, location);
+    assert.equal(calls.length, 1, location);
+  }
+  const latest = await run(preview('a/b/releases/latest'), { script: [redirect('/a/b/releases/tag/v1.0.1'), page()] });
+  assert.equal(latest.response.status, 200);
+  assert.deepEqual(latest.urls(), ['https://github.com/a/b/releases/latest', 'https://github.com/a/b/releases/tag/v1.0.1']);
+});
+
 // ---- Redirects from GitHub -----------------------------------------------------------------
 
 test('GitHub redirects are followed only to valid public GitHub paths', async () => {

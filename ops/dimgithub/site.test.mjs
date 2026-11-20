@@ -214,6 +214,16 @@ test('submitting builds the same link and image request as before', async () => 
   assert.deepEqual(dom.sent(), [], 'the page itself sends no analytics or other requests');
 });
 
+test('the browser builder accepts release links with the same parser as the server', async () => {
+  const dom = await runBuilder('https://dimgithub.com/make');
+  const target = 'https://github.com/saphid/tumblr-vault/releases/tag/v1.0.1';
+  dom.elements['github-url'].value = target;
+  dom.elements.builder.dispatchEvent({ type: 'submit', preventDefault() {} });
+  assert.equal(new URL(dom.elements.output.value).searchParams.get('url'), target);
+  assert.equal(dom.elements.original.href, target);
+  assert.equal(dom.elements.result.hidden, false);
+});
+
 test('a restored form selection repaints the swatches', async () => {
   const dom = await runBuilder('https://dimgithub.com/make');
   dom.elements.theme.value = 'solarized-light';

@@ -1,4 +1,20 @@
-# Public-only deployment receipt — 2026-11-13
+# Release link deployment receipt — 2026-11-20
+
+Production version `5c5a2ea9-4d94-482e-bd1d-080bcf1578ac` serves 100% of traffic. Live source readback matches `worker.candidate.mjs`, SHA-256 `9b63322c40a884a8fa105c3837111716a675b2f77bcf6c4070f56cae9c61faf7`. Live bindings and scheduled triggers remain empty.
+
+The shared server/browser path parser now accepts release listings, latest-release links and named release tags. Download and edit paths, encoded paths and traversal remain blocked. No outbound API routes or hosts were added. All 49 security and site tests pass; the Wrangler dry run matches the candidate byte for byte.
+
+Live verification of `https://dimgithub.com/saphid/tumblr-vault/releases/tag/v1.0.1`:
+
+```text
+crawler: HTTP 200, Release Tumblr Vault 1.0.1 — reliable backups and faster search · saphid/tumblr-vault
+preview image: HTTP 200, image/png, 105164 bytes
+browser: HTTP 302, redirect https://github.com/saphid/tumblr-vault/releases/tag/v1.0.1
+```
+
+The Nord subdomain, `/releases` and `/releases/latest` also return 200 with GitHub metadata. Direct release downloads through the wrapper return 400. The prior public-only version below remains a safe rollback target, though it rejects release links.
+
+## Previous public-only deployment receipt — 2026-11-13
 
 Production version `8e37a98a-2341-47cf-9c06-a6bbf1d4047b` serves 100% of dimgithub.com traffic. The live source readback matches `worker.candidate.mjs` byte for byte, SHA-256 `346b2ec2dd7b7324d0886397dd9d200e765972a2c183cc782d7cf335ab9c8906`.
 
