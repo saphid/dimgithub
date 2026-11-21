@@ -249,11 +249,55 @@ test('preview images outside GitHub image hosts are refused', async () => {
   }
 });
 
-test('the /image route redirects to the GitHub image itself and fetches nothing else', async () => {
-  const { response, urls } = await run('https://dimgithub.com/image?url=pingdotgg/t3code&theme=dracula');
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.get('location'), 'https://opengraph.githubassets.com/abc/pingdotgg/t3code');
-  assert.deepEqual(urls(), ['https://github.com/pingdotgg/t3code']);
+test('the /image route renders themed PNGs in-worker via the strict choke point and falls back safely', async () => {
+  // Light theme redirects directly to GitHub's original image with no image fetch.
+  const light = await run('https://dimgithub.com/image?url=pingdotgg/t3code&theme=light');
+  assert.equal(light.response.status, 302);
+  assert.equal(light.response.headers.get('location'), 'https://opengraph.githubassets.com/abc/pingdotgg/t3code');
+  assert.deepEqual(light.urls(), ['https://github.com/pingdotgg/t3code']);
+
+  // Non-PNG / corrupt upstream image falls back safely to 302 redirect (never leaks errors or 500s).
+  const fallback = await run('https://dimgithub.com/image?url=pingdotgg/t3code&theme=dracula', {
+    script: [page(), image(PNG)],
+  });
+  assert.equal(fallback.response.status, 302);
+  assert.equal(fallback.response.headers.get('location'), 'https://opengraph.githubassets.com/abc/pingdotgg/t3code');
+  assert.deepEqual(fallback.urls(), ['https://github.com/pingdotgg/t3code', 'https://opengraph.githubassets.com/abc/pingdotgg/t3code']);
+  assertFixedInit(fallback.calls[1], 'image/png');
+
+  // Build a real 100x100 white RGB PNG and verify Dracula recoloring (#282a36) returns 200 image/png.
+  const w = 100, h = 100, stride = w * 3;
+  const raw = new Uint8Array(h * (stride + 1));
+  for (let y = 0; y < h; y++) {
+    raw[y * (stride + 1)] = 0;
+    raw.fill(255, y * (stride + 1) + 1, (y + 1) * (stride + 1));
+  }
+  const cs = new CompressionStream('deflate');
+  const wr = cs.writable.getWriter();
+  const wp = wr.write(raw).then(() => wr.close());
+  const chunks = [];
+  for await (const ch of cs.readable) chunks.push(ch);
+  await wp;
+  const comp = Buffer.concat(chunks);
+  const crcT = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1); crcT[n] = c >>> 0; }
+  const crc = (b) => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = crcT[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (t, d) => { const o = Buffer.alloc(12 + d.length); o.writeUInt32BE(d.length, 0); o.write(t, 4, 'ascii'); d.copy(o, 8); o.writeUInt32BE(crc(o.subarray(4, 8 + d.length)), 8 + d.length); return o; };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const validPng = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', ihdr), chunk('IDAT', comp), chunk('IEND', Buffer.alloc(0))]);
+
+  const record = recorder([page(), image(validPng)]);
+  const themedResp = await proxyRequest(new Request('https://dimgithub.com/image?url=pingdotgg/t3code&theme=dracula'), record.fetcher);
+  assert.equal(themedResp.status, 200);
+  assert.equal(themedResp.headers.get('content-type'), 'image/png');
+  assert.deepEqual(record.urls(), ['https://github.com/pingdotgg/t3code', 'https://opengraph.githubassets.com/abc/pingdotgg/t3code']);
+  const outBuf = new Uint8Array(await themedResp.arrayBuffer());
+  assert.deepEqual(Array.from(outBuf.subarray(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+
+  // Refused opengraph URLs (query string, traversal, invalid path) are blocked by publicRequestTarget.
+  assert.equal(publicRequestTarget('https://opengraph.githubassets.com/abc/pingdotgg/t3code?x=1'), undefined);
+  assert.equal(publicRequestTarget('https://opengraph.githubassets.com/abc/pingdotgg/../settings'), undefined);
+  assert.equal(publicRequestTarget('https://opengraph.githubassets.com/abc/pingdotgg/t3code/blob/main/x'), undefined);
 });
 
 test('oversized or non-HTML GitHub responses are refused', async () => {

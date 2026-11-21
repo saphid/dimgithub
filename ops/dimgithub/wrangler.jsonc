@@ -90,7 +90,7 @@
   ],
   "preview_urls": false,
   "limits": {
-    "cpu_ms": 10
+    "cpu_ms": 250
   },
   "observability": {
     "enabled": false
